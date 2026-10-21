@@ -1,0 +1,28 @@
+{
+  "name": "dsplat/multi-tenant-saas-module-integration",
+  "description": "系统集成底座 - 外部系统资源映射（跨系统 ID 对照/批次对账，通用无业务词）",
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "MultiTenantSaas\\Modules\\Integration\\": ""
+    }
+  },
+  "require": {
+    "php": "^8.3",
+    "dsplat/multi-tenant-saas": "^1.0 || ^2.0 || ^3.0"
+  },
+  "extra": {
+    "saas": {
+      "name": "integration",
+      "priority": 300,
+      "dependencies": [],
+      "conflicts": [],
+      "requires_core": ">=1.0.0 <4.0.0",
+      "provider": "MultiTenantSaas\\Modules\\Integration\\IntegrationServiceProvider",
+      "tenant_toggleable": true,
+      "module_loadable": true,
+      "default_tenant_enabled": true
+    }
+  }
+}
