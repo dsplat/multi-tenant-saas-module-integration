@@ -35,6 +35,8 @@ class UsageAttributionService implements UsageAttributionContract
 
     public function record(UsageEvent $event): UsageAttributionResult
     {
+        $quantity = $this->canonicalQuantity($event->quantity);
+        $occurredAt = $event->occurredAt->setTimezone(new \DateTimeZone('UTC'));
         $namespacedKey = $this->namespacedKey($event);
         $existing = $this->findByEventKey($namespacedKey);
 
@@ -52,9 +54,9 @@ class UsageAttributionService implements UsageAttributionContract
                 'usage_record_id' => $id,
                 'tenant_id' => $consumer->tenantId,
                 'metric_type' => $event->dimension,
-                'value' => $event->quantity,
-                'period' => $event->occurredAt->format('Ym'),
-                'recorded_at' => $event->occurredAt,
+                'value' => $quantity,
+                'period' => $occurredAt->format('Ym'),
+                'recorded_at' => $occurredAt,
                 'event_key' => $namespacedKey,
                 'account_ref' => $event->service->accountRef->toString(),
                 'binding_ref' => $event->service->bindingRef?->toString(),
@@ -63,8 +65,8 @@ class UsageAttributionService implements UsageAttributionContract
                 'cost_source' => $event->costSource->value,
                 'price_version' => $event->costSource === CostSource::Known ? $event->priceVersion : null,
                 'metadata' => json_encode(['correlation_id' => $consumer->correlationId], JSON_THROW_ON_ERROR),
-                'created_at' => $event->occurredAt,
-                'updated_at' => $event->occurredAt,
+                'created_at' => $occurredAt,
+                'updated_at' => $occurredAt,
             ]);
         } catch (\Throwable $e) {
             // 并发重复：唯一键收敛为幂等重放；内容不一致则由 assertSameContent 拒绝
@@ -201,13 +203,32 @@ class UsageAttributionService implements UsageAttributionContract
             && (string) $existing->account_ref === $event->service->accountRef->toString()
             && (string) ($existing->binding_ref ?? '') === ($event->service->bindingRef?->toString() ?? '')
             && (string) $existing->metric_type === $event->dimension
-            && number_format((float) $existing->value, 4, '.', '') === number_format((float) $event->quantity, 4, '.', '')
+            && $this->canonicalQuantity((string) $existing->value) === $this->canonicalQuantity($event->quantity)
+            && (string) ($existing->price_version ?? '') === (string) ($event->costSource === CostSource::Known ? $event->priceVersion : null)
+            && (string) $existing->period === $event->occurredAt->setTimezone(new \DateTimeZone('UTC'))->format('Ym')
+            && (string) $existing->recorded_at === $event->occurredAt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s')
             && (string) $existing->source === $event->service->source->value
             && (string) $existing->cost_source === $event->costSource->value;
 
         if (! $same) {
             throw new DomainException("event_key 冲突：同键不同内容，拒绝重放（{$key}）");
         }
+    }
+
+    private function canonicalQuantity(string $value): string
+    {
+        if (! preg_match('/^([+-]?)(\d+)(?:\.(\d{1,4}))?$/D', $value, $matches)) {
+            throw new DomainException('Invalid usage quantity');
+        }
+
+        $integer = ltrim($matches[2], '0') ?: '0';
+        if (strlen($integer) > 14) {
+            throw new DomainException('Usage quantity exceeds decimal(18,4) range');
+        }
+        $fraction = str_pad($matches[3] ?? '', 4, '0');
+        $sign = $matches[1] === '-' && ($integer !== '0' || $fraction !== '0000') ? '-' : '';
+
+        return $sign . $integer . '.' . $fraction;
     }
 
     private function replayResult(UsageEvent $event, object $existing): UsageAttributionResult
