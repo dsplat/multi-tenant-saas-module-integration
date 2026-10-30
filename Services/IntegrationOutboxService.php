@@ -458,9 +458,9 @@ class IntegrationOutboxService
         $driver = $connection->getDriverName();
 
         $sql = match ($driver) {
-            'mysql', 'mariadb' => 'SELECT UTC_TIMESTAMP() AS current_timestamp',
-            'pgsql' => "SELECT (NOW() AT TIME ZONE 'UTC') AS current_timestamp",
-            default => 'SELECT CURRENT_TIMESTAMP AS current_timestamp',
+            'mysql', 'mariadb' => 'SELECT UTC_TIMESTAMP() AS now_ts',
+            'pgsql' => "SELECT (NOW() AT TIME ZONE 'UTC') AS now_ts",
+            default => 'SELECT CURRENT_TIMESTAMP AS now_ts',
         };
 
         $row = (array) $connection->selectOne($sql);
